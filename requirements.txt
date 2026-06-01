@@ -1,0 +1,21 @@
+# Core hardware and vision stack already present in /home/orangepi/pi.
+numpy
+opencv-python
+onnxruntime
+periphery
+smbus2
+pyserial
+
+# Audio and cloud dialogue.
+pyaudio
+soundfile
+librosa
+openai
+python-dotenv
+python-socketio
+requests
+pydub
+
+# Optional speech-emotion runtime. SER uses tflite-runtime only; the current
+# Orange Pi environment crashes when importing tensorflow.
+tflite-runtime

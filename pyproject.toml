@@ -1,0 +1,13 @@
+[project]
+name = "robot-car"
+version = "0.1.0"
+description = "Refactored Orange Pi intelligent robot car runtime"
+requires-python = ">=3.9"
+readme = "README.md"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

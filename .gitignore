@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+qwen.env
+data/*.wav
+data/*.mp3
+logs/
+
+# Large model files are kept outside git and copied manually when needed.
+models/*.onnx
+models/*.rknn
+models/*.rkllm
+models/*.tflite
+assets/image/*.xml
