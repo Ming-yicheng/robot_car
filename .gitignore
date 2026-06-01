@@ -10,6 +10,7 @@ data/*.mp3
 logs/
 
 # Large model files are kept outside git and copied manually when needed.
+models/
 models/*.onnx
 models/*.rknn
 models/*.rkllm

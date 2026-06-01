@@ -1,6 +1,24 @@
 # robot_car
 
-这是从 `/home/orangepi/robust_code` 重构出来的智能小车工程骨架。新工程只保留核心代码：底盘电机、PCA9685 舵机、超声波、红外、摄像头/人脸追踪、语音对话、情绪识别和 Web 数据上传。旧目录里的单文件测试脚本、Notebook checkpoint、缓存文件和大模型文件没有复制进来。
+`robot_car` 是面向 Orange Pi 5 Plus / RK3588 的智能小车工程。项目从旧目录 `/home/orangepi/robust_code` 重构而来，把原来分散在单文件脚本里的功能拆成了更清晰的工程结构：底盘运动、云台舵机、传感器、视觉追踪、语音交互、情绪识别和 Web 数据上传。
+
+旧项目中的测试脚本、Notebook checkpoint、缓存文件和大模型文件不纳入 Git 仓库。模型文件保留在本机 `models/` 目录中，按需手动拷贝。
+
+## 当前状态
+
+已完成：
+
+- TB6612 四电机底盘控制
+- PCA9685 云台舵机控制
+- 超声波测距和红外避障封装
+- OpenCV 摄像头读取和 Haar 人脸追踪
+- 面部情绪识别接口：`emotion-ferplus-8.onnx`
+- 语音情绪识别接口：`SER.tflite`
+- Qwen / DashScope 语音对话接口
+- Socket.IO 视频帧和情绪数据上传接口
+- 主程序入口：`python -m robot_car.app.main`
+
+运行完整功能前需要配置 API Key，并补齐部分可选依赖。
 
 ## 目录结构
 
@@ -8,18 +26,124 @@
 robot_car/
   robot_car/
     app/                 # 主程序和跟随控制策略
-    audio/               # 录音、语音情绪、Qwen 语音对话
-    hardware/            # 电机、舵机、传感器、机器人组合对象
-    vision/              # 摄像头、人脸追踪、面部情绪
+    audio/               # 录音、语音情绪识别、Qwen 语音对话
+    hardware/            # 电机、舵机、超声波、红外、LED/按键
+    vision/              # 摄像头、人脸追踪、面部情绪识别
     web/                 # Socket.IO 数据和视频帧上传
-    config.py            # 所有硬件引脚、模型路径、运行参数
-    state.py             # 线程之间共享的小车状态
-  assets/image/          # Haar 级联分类器，手动从旧目录或系统拷贝
-  models/                # onnx/tflite/rknn/rkllm 等大模型，手动迁移
-  data/                  # 运行时音频输出
+    config.py            # 统一配置：引脚、模型路径、阈值、API、Web 地址
+    state.py             # 线程间共享状态
+  assets/image/          # Haar XML，本机保留，不上传 Git
+  data/                  # 运行时录音输出
+  models/                # ONNX / RKNN / RKLLM / TFLite 模型，本机保留，不上传 Git
+```
+
+## 环境
+
+当前 Orange Pi 上使用已有虚拟环境：
+
+```bash
+source /home/orangepi/pi/bin/activate
+```
+
+已验证核心环境：
+
+```text
+Python 3.9.18
+periphery
+smbus2
+opencv-python / cv2
+numpy
+onnxruntime
+pyaudio
+soundfile
+librosa
+python-dotenv
+pyserial
+```
+
+完整语音和 Web 功能还需要：
+
+```bash
+pip install openai python-socketio dashscope tflite-runtime
+```
+
+注意：当前板子上 `tensorflow` 导入会触发崩溃，所以语音情绪识别只使用 `tflite-runtime`。
+
+## 配置
+
+复制配置模板：
+
+```bash
+cd /home/orangepi/robot_car
+cp .env.example .env
+nano .env
+```
+
+至少填写：
+
+```text
+DASHSCOPE_API_KEY=你的 DashScope API Key
+```
+
+常用环境变量：
+
+```text
+ROBOT_WEB_SERVER_URL=http://192.168.1.102:5000
+ROBOT_CAMERA_BACKEND=opencv
+ROBOT_CAMERA_DEVICE=0
+ROBOT_SERVO_I2C_BUS=2
+ROBOT_SERVO_I2C_ADDRESS=0x40
+ROBOT_FOLLOW_ENABLED_ON_START=false
+```
+
+如果 `i2cdetect` 看到 PCA9685 地址是 `0x60`，运行前可以覆盖：
+
+```bash
+export ROBOT_SERVO_I2C_ADDRESS=0x60
+```
+
+## 模型和资源
+
+模型文件放在本机，不上传 GitHub。
+
+当前主程序直接使用：
+
+```text
+models/emotion-ferplus-8.onnx
+models/SER.tflite
+assets/image/haarcascade_frontalface_default.xml
+assets/image/haarcascade_eye.xml
+```
+
+推荐模型目录：
+
+```text
+models/
+  emotion-ferplus-8.onnx
+  SER.tflite
+  face/
+    yolov8.onnx
+    yolov8.rknn
+    sface.onnx
+    sface.rknn
+    minixception.onnx
+    minixception.rknn
+  speech/
+    sensevoice-small/
+    vits-melo-tts-zh_en/
+  llm/
+    qwen3-vl-2b-instruct_w8a8_rk3588.rkllm
+```
+
+如果 `assets/image/` 里没有 Haar XML，程序会尝试使用 OpenCV 自带路径：
+
+```text
+/home/orangepi/pi/lib/python3.9/site-packages/cv2/data/
 ```
 
 ## 运行
+
+基础启动：
 
 ```bash
 cd /home/orangepi/robot_car
@@ -27,72 +151,76 @@ source /home/orangepi/pi/bin/activate
 python -m robot_car.app.main
 ```
 
+没有配置实体按键时，直接启用跟随模式：
+
+```bash
+python -m robot_car.app.main --follow
+```
+
+先只验证视觉和硬件控制，不启用语音和 Web：
+
+```bash
+python -m robot_car.app.main --follow --no-voice --no-web
+```
+
 常用参数：
 
 ```bash
-python -m robot_car.app.main --follow       # 不接按键时，启动后直接进入跟随
-python -m robot_car.app.main --no-voice     # 只跑视觉和轮子控制
-python -m robot_car.app.main --no-web       # 不连接 Web 服务
+python -m robot_car.app.main --no-voice
+python -m robot_car.app.main --no-web
 python -m robot_car.app.main --skip-calibration
+python -m robot_car.app.main --camera-backend opencv
 ```
 
-## 需要手动迁移的大文件
+## 硬件默认配置
 
-按你后续实际功能选择迁移，不需要一次全放进去：
+硬件参数集中在 `robot_car/config.py`。
+
+当前默认值：
 
 ```text
-robust_code/face_recognition-master/yolov8.onnx
-robust_code/face_recognition-master/minixception.onnx
-robust_code/face_recognition-master/*.rknn
-robust_code/Independent module/qwen3-vl-2b-instruct_w8a8_rk3588.rkllm
-robust_code/Independent module/sensevoice-small/
-robust_code/Independent module/vits-melo-tts-zh_en/
+摄像头：/dev/video0，320x240
+PCA9685：I2C bus 2，地址 0x40
+云台舵机：pan=10，tilt=9
+超声波：TRIG=100，ECHO=99
+红外：left=101，right=35
+跟随按键：默认未配置，建议先用 --follow
 ```
 
-主函数里实际使用的模型路径已经统一到：
-
-```text
-robot_car/models/emotion-ferplus-8.onnx
-robot_car/models/SER.tflite
-robot_car/assets/image/haarcascade_frontalface_default.xml
-robot_car/assets/image/haarcascade_eye.xml
-```
-
-如果 Haar XML 不放到 `assets/image/`，程序会优先尝试 OpenCV 自带路径。`emotion-ferplus-8.onnx` 和 `SER.tflite` 不存在时，对应情绪识别会自动禁用，主流程继续运行。
-
-## 环境变量
-
-不要把 API Key 写死在代码里。复制 `.env.example` 为 `.env` 或 `qwen.env`：
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-然后填入：
-
-```text
-DASHSCOPE_API_KEY=你的key
-```
-
-## 硬件配置
-
-硬件引脚在 `robot_car/config.py` 中集中配置。当前默认值来自旧项目里相对成熟的完成版模块：
-
-- TB6612 四电机：`finish module/tb6612_abcd_test.py`
-- 超声波：`TRIG=100`，`ECHO=99`
-- 红外：左 `101`，右 `35`
-- 云台舵机：PCA9685，I2C bus `2`，地址默认 `0x40`
-
-如果舵机没有动作，先在 Orange Pi 上检查：
+检查设备：
 
 ```bash
 ls /dev/i2c-*
+ls /dev/video*
 i2cdetect -y 2
 ```
 
-看到的地址如果是 `0x60`，可用环境变量覆盖：
+## Git 注意事项
+
+不要把模型、API Key、运行日志、录音文件上传到 GitHub。`.gitignore` 已经忽略：
+
+```text
+.env
+qwen.env
+models/
+assets/image/*.xml
+data/*.wav
+logs/
+__pycache__/
+```
+
+提交前建议检查：
 
 ```bash
-export ROBOT_SERVO_I2C_ADDRESS=0x60
+git status --short
+find . -path ./.git -prune -o -type f -size +50M -print
+grep -R "sk-" . --exclude-dir=.git --exclude-dir=models
+```
+
+推送：
+
+```bash
+git add README.md .gitignore
+git commit -m "Update project README"
+git push
 ```
