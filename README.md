@@ -195,7 +195,7 @@ ls /dev/video*
 i2cdetect -y 2
 ```
 
-## Git 注意事项
+## Git 日常上传流程
 
 不要把模型、API Key、运行日志、录音文件上传到 GitHub。`.gitignore` 已经忽略：
 
@@ -209,18 +209,54 @@ logs/
 __pycache__/
 ```
 
-提交前建议检查：
+确认远端地址：
 
 ```bash
-git status --short
-find . -path ./.git -prune -o -type f -size +50M -print
-grep -R "sk-" . --exclude-dir=.git --exclude-dir=models
+git remote -v
 ```
 
-推送：
+本项目当前使用 GitHub SSH 443 端口，适合普通 22 端口不稳定时使用：
+
+```text
+ssh://git@ssh.github.com:443/Ming-yicheng/robot_car.git
+```
+
+每次修改代码或文档后，按下面流程上传：
 
 ```bash
-git add README.md .gitignore
-git commit -m "Update project README"
+# 1. 查看改了什么
+git status --short
+
+# 2. 检查是否误放了大文件或密钥
+find . -path ./.git -prune -o -type f -size +50M -print
+grep -R "sk-" . --exclude-dir=.git --exclude-dir=models
+
+# 3. 添加要提交的文件
+git add <文件1> <文件2>
+
+# 如果确认 .gitignore 正确，也可以添加全部非忽略文件
+git add -A
+
+# 4. 提交
+git commit -m "Describe your change"
+
+# 5. 推送前先同步远端，避免覆盖别人提交
+git pull --rebase
+
+# 6. 上传到 GitHub
 git push
+```
+
+如果不小心把模型、密钥或运行文件加入暂存区，先撤回暂存：
+
+```bash
+git restore --staged models/ assets/image/ .env qwen.env data/ logs/
+```
+
+推荐提交粒度：
+
+```text
+代码修改：git commit -m "Refine follow controller"
+文档修改：git commit -m "Update README"
+配置模板：git commit -m "Update environment example"
 ```
