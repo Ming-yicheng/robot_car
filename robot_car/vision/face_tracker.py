@@ -1,4 +1,11 @@
-"""Face tracking, gimbal control, and optional facial emotion recognition."""
+"""人脸追踪、云台控制和可选面部情绪识别。
+
+视频线程每读取一帧，就交给 `FaceTracker.process_frame()`。该方法会：
+    1. 使用 Haar Cascade 检测最大人脸
+    2. 根据人脸中心偏差调整 pan/tilt 舵机
+    3. 更新共享状态，供底盘跟随逻辑读取
+    4. 如果模型存在，执行面部情绪识别并画到视频帧上
+"""
 
 from __future__ import annotations
 
@@ -17,13 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 def softmax(values: np.ndarray) -> np.ndarray:
+    """把模型 logits 转成概率分布。"""
+
     shifted = values - np.max(values)
     exp_values = np.exp(shifted)
     return exp_values / exp_values.sum(axis=0)
 
 
 class FacialEmotionRecognizer:
-    """ONNX FER+ emotion classifier used by the uploaded main function."""
+    """旧主函数使用的 ONNX FER+ 面部情绪分类器。"""
 
     def __init__(self, model_path: Path, labels: tuple[str, ...], input_size: tuple[int, int]):
         if not model_path.exists():
@@ -34,6 +43,7 @@ class FacialEmotionRecognizer:
         self.input_size = input_size
 
     def predict(self, gray_face) -> tuple[str, float]:
+        """输入灰度人脸区域，输出情绪标签和置信度。"""
         resized = cv2.resize(gray_face, self.input_size)
         model_input = np.expand_dims(np.expand_dims(resized, axis=0), axis=0).astype(np.float32)
         logits = self.session.run(None, {self.input_name: model_input})[0][0]
@@ -43,7 +53,7 @@ class FacialEmotionRecognizer:
 
 
 class FaceTracker:
-    """Detect the largest face, move the pan/tilt servos, and update state."""
+    """检测最大人脸，控制云台，并更新共享状态。"""
 
     def __init__(self, config: AppConfig, state: RobotState, robot: RobotCar):
         self.config = config
@@ -57,6 +67,12 @@ class FaceTracker:
         self.emotion = self._load_emotion_recognizer()
 
     def _load_cascade(self, configured_path: Path, fallback_name: str):
+        """加载 Haar Cascade。
+
+        优先使用项目 `assets/image/` 下的 XML；如果没有，则使用 OpenCV 安装包自带
+        的 cascade 文件。
+        """
+
         cascade_path = configured_path if configured_path.exists() else Path(cv2.data.haarcascades) / fallback_name
         cascade = cv2.CascadeClassifier(str(cascade_path))
         if cascade.empty():
@@ -65,6 +81,11 @@ class FaceTracker:
         return cascade
 
     def _load_emotion_recognizer(self):
+        """加载面部情绪识别模型。
+
+        模型缺失时只关闭情绪识别，不影响人脸追踪和云台控制。
+        """
+
         model_path = self.config.paths.facial_emotion_model_path
         if not model_path.exists():
             logger.warning("Facial emotion model missing, emotion detection disabled: %s", model_path)
@@ -82,7 +103,7 @@ class FaceTracker:
             return None
 
     def process_frame(self, frame) -> np.ndarray:
-        """Return an annotated frame and update shared state."""
+        """处理一帧图像并返回带标注的图像。"""
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(

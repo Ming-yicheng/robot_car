@@ -1,10 +1,9 @@
-"""TB6612FNG four-wheel motor control for Orange Pi.
+"""Orange Pi 上的 TB6612FNG 四轮底盘控制。
 
-The original finished motor script already solved the important problem:
-when four motors use software PWM, all PWM pins must be toggled in one timing
-loop.  If each motor runs its own blocking PWM loop, the motors visibly stutter.
-This module keeps that synchronous PWM approach and exposes clearer movement
-methods for the application layer.
+旧项目里“完成版电机测试脚本”已经解决了一个关键问题：如果四个电机分别进入
+自己的阻塞式软件 PWM 循环，电机实际上会轮流得到 PWM，表现为明显卡顿。这里保留
+“同步 PWM”的思想：在同一个时间循环里同时拉高四个 PWM 引脚，再按各自占空比依次
+拉低，尽量保证多电机动作一致。
 """
 
 from __future__ import annotations
@@ -19,23 +18,22 @@ from robot_car.config import MotorPins
 
 
 def clamp_percent(speed: float) -> float:
-    """Clamp a 0..100 speed percentage."""
+    """把速度百分比限制在 0..100。"""
 
     return max(0.0, min(100.0, float(speed)))
 
 
 def clamp_duty(duty: float) -> float:
-    """Clamp a 0..1 PWM duty value."""
+    """把 PWM 占空比限制在 0..1。"""
 
     return max(0.0, min(1.0, float(duty)))
 
 
 @dataclass
 class MotorVector:
-    """Signed motor command.
+    """单个电机的有符号运动命令。
 
-    Positive duty means forward, negative duty means backward, and zero means
-    stopped.  Magnitude is in 0..1 duty units.
+    正数表示前进，负数表示后退，0 表示停止。绝对值是 PWM 占空比。
     """
 
     duty: float
@@ -54,7 +52,11 @@ class MotorVector:
 
 
 class Tb6612Motor:
-    """One TB6612 motor channel."""
+    """一个 TB6612 电机通道。
+
+    每个电机有一个 PWM 引脚和两个方向引脚。这里不单独提供长时间运行方法，
+    避免单电机阻塞影响多电机同步。
+    """
 
     def __init__(self, pwm_pin: int, in1_pin: int, in2_pin: int, name: str):
         self.name = name
@@ -64,10 +66,12 @@ class Tb6612Motor:
         self.stop()
 
     def set_direction(self, forward: bool) -> None:
+        """设置电机方向。"""
         self.in1.write(bool(forward))
         self.in2.write(not bool(forward))
 
     def stop(self) -> None:
+        """关闭 PWM 和方向脚，让电机停止。"""
         self.pwm.write(False)
         self.in1.write(False)
         self.in2.write(False)
@@ -80,10 +84,10 @@ class Tb6612Motor:
 
 
 class FourWheelDrive:
-    """Four-motor chassis with legacy movement aliases.
+    """四轮底盘控制器，并保留旧 LOBOROBOT 风格方法名。
 
-    The application uses percentage speeds because the old LOBOROBOT class did.
-    Internally the software PWM loop converts them to 0..1 duty values.
+    上层应用仍然使用百分比速度，内部会转换成 0..1 占空比。保留 `t_up`、
+    `turnLeft` 等旧方法名，是为了让从旧主函数迁移来的逻辑更容易对应。
     """
 
     def __init__(
@@ -114,7 +118,11 @@ class FourWheelDrive:
         )
 
     def run_vectors(self, vectors: Iterable[float], duration: float | None = None) -> None:
-        """Run signed motor duties for one slice or a fixed duration."""
+        """按四个有符号占空比运行底盘。
+
+        `vectors` 顺序对应 A/B/C/D 四个电机。duration 为 0 或 None 时，只运行一个
+        控制切片，适合主循环不断刷新命令；duration 大于 0 时会阻塞运行指定秒数。
+        """
 
         commands = [MotorVector(duty) for duty in vectors]
         if len(commands) != 4:
@@ -132,7 +140,11 @@ class FourWheelDrive:
         self._synchronous_pwm(active, run_seconds)
 
     def _synchronous_pwm(self, active: list[tuple[Tb6612Motor, MotorVector]], duration: float) -> None:
-        """Toggle all active PWM pins in the same timing loop."""
+        """同步软件 PWM。
+
+        先同时拉高所有需要工作的 PWM 引脚，再按照各自高电平时间排序拉低。
+        这样四个电机在一个 PWM 周期内共享同一个时间基准。
+        """
 
         period = 1.0 / self.pwm_frequency_hz
         end_time = time() + max(0.0, duration)
@@ -161,6 +173,7 @@ class FourWheelDrive:
             motor.pwm.write(False)
 
     def _speed_to_duty(self, speed_percent: float) -> float:
+        """把百分比速度转换为占空比。"""
         return clamp_percent(speed_percent) / 100.0
 
     def forward(self, speed: float, duration: float = 0.0) -> None:

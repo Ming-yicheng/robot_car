@@ -1,1 +1,5 @@
-"""Audio recording, speech emotion, and voice dialogue."""
+"""语音相关模块。
+
+包括录音、语音情绪识别和 Qwen 云端语音对话。语音功能依赖网络和 API Key，
+因此代码中都尽量做成“可选失败”：缺依赖或缺模型时不会影响底盘和视觉运行。
+"""

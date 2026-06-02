@@ -1,4 +1,12 @@
-"""Main entry point for the refactored robot car application."""
+"""重构后智能小车主入口。
+
+主程序负责把各个模块接起来：
+    - 视频线程：读取摄像头，检测人脸，控制云台，并上传视频帧
+    - 语音线程：录音、情绪识别、Qwen 回复、上传对话结果
+    - 底盘循环：读取红外/超声波/人脸状态，控制小车移动
+
+注意：这个文件只负责流程编排，不直接写 GPIO 或模型推理细节。
+"""
 
 from __future__ import annotations
 
@@ -27,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
+    """解析命令行参数。
+
+    这些参数用于调试不同子系统，例如只跑视觉和底盘，或在没有实体按键时直接启用
+    跟随模式。
+    """
+
     parser = argparse.ArgumentParser(description="Run the Orange Pi robot car.")
     parser.add_argument("--follow", action="store_true", help="Enable follow mode without a physical button.")
     parser.add_argument("--no-follow", action="store_true", help="Disable wheel follow loop.")
@@ -38,6 +52,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def draw_status(frame, snapshot: dict) -> None:
+    """在视频帧左上角叠加当前语音状态。"""
+
     status = []
     if snapshot["voice_active"]:
         status.append("Voice: ON")
@@ -50,6 +66,12 @@ def draw_status(frame, snapshot: dict) -> None:
 
 
 def run_video_loop(stop_event: threading.Event, config, state: RobotState, robot: RobotCar, telemetry: TelemetryClient) -> None:
+    """视频线程入口。
+
+    该线程持续读取摄像头画面，交给 FaceTracker 处理。FaceTracker 会更新共享状态
+    并控制云台；这里再负责按频率上传 JPEG 帧。
+    """
+
     camera = create_camera(config.camera)
     tracker = FaceTracker(config, state, robot)
     last_sent_at = 0.0
@@ -77,6 +99,8 @@ def run_video_loop(stop_event: threading.Event, config, state: RobotState, robot
 
 
 def blink_blue_led(stop_event: threading.Event, leds: LedIndicators) -> None:
+    """语音处理期间闪烁蓝灯，提示用户系统正在工作。"""
+
     while not stop_event.is_set():
         leds.blue.on()
         time.sleep(0.15)
@@ -95,6 +119,12 @@ def run_voice_loop(
     telemetry: TelemetryClient,
     leds: LedIndicators,
 ) -> None:
+    """语音线程入口。
+
+    一次语音回合包括：录音、可选语音情绪识别、可选云端文本情绪提取、Qwen 音频
+    回复、Web 上传。任何一步失败都只记录日志，不让主程序退出。
+    """
+
     logger.info("Voice loop started")
     while not stop_event.is_set():
         snapshot = state.snapshot()
@@ -140,6 +170,11 @@ def run_voice_loop(
 
 
 def main() -> None:
+    """程序主入口。
+
+    这里负责创建配置、硬件对象、共享状态和各工作线程，并在退出时统一释放资源。
+    """
+
     args = parse_args()
     config = load_config()
     if args.camera_backend:
@@ -156,6 +191,7 @@ def main() -> None:
     stop_event = threading.Event()
 
     def request_stop(signum=None, frame=None):
+        """SIGINT/SIGTERM 信号处理函数。"""
         logger.info("Stop requested")
         stop_event.set()
 

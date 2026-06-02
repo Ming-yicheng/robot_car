@@ -1,4 +1,8 @@
-"""Optional TFLite speech emotion recognizer."""
+"""可选的 TFLite 语音情绪识别。
+
+旧主函数使用 `SER.tflite` 进行语音情绪识别。当前 Orange Pi 环境导入 TensorFlow
+会崩溃，因此这里只依赖 `tflite_runtime`，并手写了序列 padding 逻辑。
+"""
 
 from __future__ import annotations
 
@@ -12,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class SpeechEmotionRecognizer:
-    """Classify speech emotion from a recorded WAV file."""
+    """从录音文件中识别语音情绪。"""
 
     def __init__(self, model_path: Path):
         if not model_path.exists():
@@ -32,6 +36,7 @@ class SpeechEmotionRecognizer:
         self.max_len = 47
 
     def predict_file(self, audio_path: Path) -> tuple[Optional[str], float]:
+        """读取 WAV 文件，提取 MFCC，并输出情绪标签和置信度。"""
         audio_data, _ = self._librosa.load(str(audio_path), sr=self.sample_rate)
         mfcc = self._librosa.feature.mfcc(
             y=audio_data,
@@ -48,10 +53,10 @@ class SpeechEmotionRecognizer:
         return self.labels[emotion_id], float(probabilities[emotion_id])
 
     def _pad_features(self, features: np.ndarray) -> np.ndarray:
-        """Pad or truncate MFCC sequence to the model's fixed length.
+        """把 MFCC 序列补齐或截断到模型固定长度。
 
-        This replaces tensorflow.keras.preprocessing.sequence.pad_sequences so
-        the robot does not need to import TensorFlow on the Orange Pi.
+        这样可以替代 `tensorflow.keras.preprocessing.sequence.pad_sequences`，
+        避免在 Orange Pi 上导入 TensorFlow。
         """
 
         output = np.zeros((1, self.max_len, features.shape[1]), dtype=np.float32)
@@ -61,6 +66,10 @@ class SpeechEmotionRecognizer:
 
 
 def maybe_create_speech_emotion(model_path: Path) -> Optional[SpeechEmotionRecognizer]:
+    """尝试创建语音情绪识别器。
+
+    模型或依赖不存在时返回 None，让主流程自动跳过 SER 功能。
+    """
     if not model_path.exists():
         logger.warning("Speech emotion model missing, SER disabled: %s", model_path)
         return None

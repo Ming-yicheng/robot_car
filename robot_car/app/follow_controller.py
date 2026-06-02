@@ -1,9 +1,13 @@
-"""Wheel follow and obstacle-avoidance strategy.
+"""底盘跟随和避障策略。
 
-This is the wheel_control_loop from the uploaded main function, rewritten as a
-class with explicit dependencies.  The behavior is intentionally close to the
-original: infrared avoidance has priority, then gimbal-assisted face following,
-then approach/hold decisions based on face width.
+这个类来自用户提供的 `main_decoupling_web_sequence.py` 中的 `wheel_control_loop`，
+但改成了显式依赖注入：需要的状态、传感器、机器人对象都从构造函数传入。
+
+控制优先级保持和旧主函数一致：
+    1. 红外避障最高优先级，检测到近距离障碍立即转向或后退
+    2. 云台角度偏离过大时，让底盘辅助转向，避免云台转到极限
+    3. 根据人脸框宽度判断距离：太远则靠近，适中或太近则停止
+    4. 没有人脸或没有匹配动作时，底盘停止
 """
 
 from __future__ import annotations
@@ -22,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 class FollowController:
+    """把传感器和视觉状态转换成底盘动作。"""
+
     def __init__(
         self,
         config: AppConfig,
@@ -42,6 +48,7 @@ class FollowController:
         self._last_action = None
 
     def run(self, stop_event: threading.Event) -> None:
+        """持续运行底盘控制循环，直到收到停止事件。"""
         logger.info("Wheel follow loop started")
         try:
             while not stop_event.is_set():
@@ -53,6 +60,10 @@ class FollowController:
             logger.info("Wheel follow loop stopped")
 
     def step(self) -> None:
+        """执行一次控制决策。
+
+        主循环每 50ms 左右调用一次。这里不做长时间阻塞，避免底盘响应迟钝。
+        """
         follow_enabled = self.follow_button.is_enabled
         if follow_enabled:
             self.leds.set_following()
@@ -78,6 +89,10 @@ class FollowController:
         self._act("no_face_stop", "未检测到可跟随人脸，停止。", lambda: self.robot.t_stop(0.05))
 
     def _handle_infrared(self, left_ir: bool, right_ir: bool, speed_factor: float) -> bool:
+        """处理红外避障。
+
+        返回 True 表示本轮已经采取动作，后续人脸跟随逻辑不再执行。
+        """
         cfg = self.config.follow
         if left_ir and right_ir:
             self._act(
@@ -103,6 +118,10 @@ class FollowController:
         return False
 
     def _handle_face_tracking(self, snapshot: dict, distance_cm: float, speed_factor: float) -> bool:
+        """处理人脸跟随逻辑。
+
+        `snapshot` 是线程安全状态快照，避免在一次决策过程中被视频线程改动。
+        """
         cfg = self.config.follow
         pan = snapshot["pan"]
         error_pan = snapshot["face_error_pan"]
@@ -138,6 +157,7 @@ class FollowController:
         return self._hold_or_turn(error_pan, face_width, speed_factor)
 
     def _approach_far_face(self, error_pan: float, distance_cm: float, speed_factor: float) -> bool:
+        """人脸较远时的靠近策略。"""
         cfg = self.config.follow
         if abs(error_pan) < cfg.centered_error_pan_threshold:
             clear_distance = cfg.ultrasonic_forward_obstacle_cm * cfg.approach_clearance_factor
@@ -166,6 +186,7 @@ class FollowController:
         return True
 
     def _hold_or_turn(self, error_pan: float, face_width: float, speed_factor: float) -> bool:
+        """人脸距离适中或较近时，执行居中转向或停止保持。"""
         cfg = self.config.follow
         if abs(error_pan) > cfg.centered_error_pan_threshold:
             if error_pan < 0:
@@ -186,6 +207,10 @@ class FollowController:
         return True
 
     def _act(self, action_id: str, message: str, command) -> None:
+        """执行动作并限制重复日志。
+
+        底盘循环频率较高，如果每次都打印会刷屏；只有动作类型变化时才记录日志。
+        """
         if action_id != self._last_action:
             logger.info(message)
             self._last_action = action_id

@@ -1,7 +1,8 @@
-"""Qwen voice dialogue client.
+"""Qwen / DashScope 语音对话客户端。
 
-This replaces the hard-coded API key and absolute audio path from the uploaded
-main function.  Keys are read from .env, qwen.env, or OS environment variables.
+旧主函数里把 API Key 和绝对音频路径写死在代码中。这里改为从 `.env`、`qwen.env`
+或系统环境变量读取 Key，音频路径使用当前项目生成的 WAV 文件，避免泄露密钥，也
+方便迁移到其他板子。
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TextEmotionResult:
+    """云端语音转文字和文本情绪结果。"""
+
     text: Optional[str] = None
     emotion: Optional[str] = None
     confidence: float = 0.0
@@ -28,11 +31,13 @@ class TextEmotionResult:
 
 @dataclass
 class VoiceReply:
+    """Qwen 返回的语音回复文本。"""
+
     text: str
 
 
 class QwenVoiceClient:
-    """Cloud ASR/chat/TTS client using DashScope OpenAI-compatible mode."""
+    """使用 DashScope OpenAI-compatible 接口的语音对话客户端。"""
 
     def __init__(self, qwen_config: QwenConfig, audio_config: AudioConfig):
         self.qwen_config = qwen_config
@@ -48,6 +53,7 @@ class QwenVoiceClient:
             logger.warning("No Qwen API key found; voice response is disabled")
 
     def _load_api_key(self) -> Optional[str]:
+        """从配置文件或环境变量读取 API Key。"""
         for env_file in (self.qwen_config.env_file, self.qwen_config.fallback_env_file):
             if env_file.exists():
                 try:
@@ -64,15 +70,15 @@ class QwenVoiceClient:
 
     @staticmethod
     def _encode_audio(audio_path: Path) -> str:
+        """把 WAV 文件编码为 base64，供多模态接口上传。"""
         with audio_path.open("rb") as handle:
             return base64.b64encode(handle.read()).decode("utf-8")
 
     def transcribe_text_emotion(self, audio_path: Path) -> TextEmotionResult:
-        """Optional DashScope transcription and text-emotion extraction.
+        """可选：调用 DashScope 获取语音转写和文本情绪。
 
-        The main response call can still work without this.  If dashscope is not
-        installed or the model response is malformed, the caller simply gets an
-        empty result.
+        这个结果主要用于 Web 端展示。即使 dashscope 未安装或返回格式异常，主语音
+        回复仍然可以继续执行。
         """
 
         if not self.api_key:
@@ -109,6 +115,7 @@ class QwenVoiceClient:
             return TextEmotionResult()
 
     def chat_with_audio(self, audio_path: Path, *, facial_emotion: Optional[str], speech_emotion: Optional[str]) -> VoiceReply:
+        """把用户录音发给 Qwen，并流式播放模型返回的语音。"""
         if self.client is None:
             return VoiceReply(text="")
 
@@ -171,6 +178,7 @@ class QwenVoiceClient:
         return VoiceReply(text=result_text.strip())
 
     def _build_system_prompt(self, facial_emotion: Optional[str], speech_emotion: Optional[str]) -> str:
+        """根据视觉/语音情绪构造系统提示词。"""
         parts = [self.qwen_config.system_prompt]
         if facial_emotion:
             parts.append(f"视觉情绪识别结果为 {facial_emotion}。")

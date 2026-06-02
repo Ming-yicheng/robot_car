@@ -1,4 +1,8 @@
-"""Voice activity recording with dynamic noise calibration."""
+"""带动态噪声校准的录音器。
+
+录音逻辑采用简单能量阈值：先测量环境噪声，再根据音量判断用户是否开始说话。
+这种方法不如 VAD 模型精细，但依赖少、响应快，适合先把主流程跑起来。
+"""
 
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class VoiceRecorder:
-    """Record a voice turn to a WAV file using a simple energy threshold."""
+    """录制一次用户语音并保存为 WAV。"""
 
     def __init__(self, config: AudioConfig, output_path: Path):
         import pyaudio
@@ -28,14 +32,16 @@ class VoiceRecorder:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _format(self):
+        """把配置里的 PyAudio 格式名称转换为 PyAudio 常量。"""
         return getattr(self.pyaudio, self.config.sample_format_name)
 
     @staticmethod
     def _volume(data: bytes) -> float:
+        """计算一块 PCM 音频数据的能量。"""
         return float(np.linalg.norm(np.frombuffer(data, dtype=np.int16)))
 
     def calibrate_noise(self) -> float:
-        """Measure ambient noise once and derive the speaking threshold."""
+        """测量环境噪声并设置动态说话阈值。"""
 
         audio = self.pyaudio.PyAudio()
         stream = audio.open(
@@ -63,7 +69,11 @@ class VoiceRecorder:
         return self.dynamic_threshold
 
     def record_once(self, on_listening: Optional[Callable[[bool], None]] = None) -> Optional[Path]:
-        """Record until silence or max duration. Return the WAV path if speech exists."""
+        """录制一次语音。
+
+        返回 WAV 文件路径表示录到了有效语音；返回 None 表示没有检测到用户说话。
+        `on_listening` 用来同步更新状态和 LED。
+        """
 
         audio = self.pyaudio.PyAudio()
         stream = audio.open(

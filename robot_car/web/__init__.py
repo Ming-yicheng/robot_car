@@ -1,1 +1,4 @@
-"""Web telemetry client."""
+"""Web 上传模块。
+
+通过 Socket.IO 上传小车状态、情绪结果和视频帧。Web 服务不可用时不影响本地控制。
+"""

@@ -1,4 +1,4 @@
-"""Socket.IO telemetry and video streaming."""
+"""Socket.IO 状态上传和视频帧推送。"""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 class TelemetryClient:
-    """Non-fatal Socket.IO wrapper.
+    """非阻塞式 Socket.IO 客户端。
 
-    If the web server is down, robot control should continue.  All networking
-    failures are logged and swallowed.
+    小车控制不能依赖 Web 服务是否在线。因此这里所有连接、发送异常都只记录日志，
+    不会抛到主循环导致程序退出。
     """
 
     def __init__(self, config: WebConfig):
@@ -38,6 +38,8 @@ class TelemetryClient:
             logger.warning("Socket.IO unavailable: %s", exc)
 
     def _register_events(self) -> None:
+        """注册 Socket.IO 连接事件回调。"""
+
         @self.sio.event
         def connect():
             self.connected = True
@@ -54,6 +56,8 @@ class TelemetryClient:
             logger.info("Disconnected from web server")
 
     def connect(self) -> None:
+        """尝试连接 Web 服务。失败时只记录日志。"""
+
         if self.sio is None:
             return
         try:
@@ -62,6 +66,8 @@ class TelemetryClient:
             logger.warning("Web server connection skipped: %s", exc)
 
     def send_robot_data(self, state: RobotState) -> None:
+        """上传当前机器人状态和情绪/对话结果。"""
+
         if not self._can_emit():
             return
         state.aggregate_facial_emotion()
@@ -81,6 +87,8 @@ class TelemetryClient:
         self._emit("robot_data", payload)
 
     def send_video_frame(self, frame, jpeg_quality: int = 80) -> None:
+        """把视频帧编码成 JPEG + base64 后上传。"""
+
         if not self._can_emit():
             return
         ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality])
@@ -90,14 +98,19 @@ class TelemetryClient:
         self._emit("video_frame", {"frame": frame_b64})
 
     def _can_emit(self) -> bool:
+        """判断当前是否可以发送 Socket.IO 消息。"""
+
         return self.sio is not None and bool(self.connected)
 
     def _emit(self, event: str, payload: dict) -> None:
+        """安全发送事件。"""
+
         try:
             self.sio.emit(event, payload)
         except Exception as exc:
             logger.warning("Failed to emit %s: %s", event, exc)
 
     def close(self) -> None:
+        """关闭 Socket.IO 连接。"""
         if self.sio is not None and self.connected:
             self.sio.disconnect()

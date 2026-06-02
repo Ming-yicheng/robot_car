@@ -1,4 +1,8 @@
-"""GPIO sensors and indicators."""
+"""GPIO 传感器和指示灯封装。
+
+这里统一使用 `periphery.GPIO`，避免旧主函数中 gpiozero BCM 编号和 Orange Pi
+GPIO line offset 混用的问题。所有输入都支持 active_low，用于低电平触发模块。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class GPIOInput:
-    """Small active-low aware input wrapper."""
+    """支持 active-low 的输入引脚包装类。"""
 
     def __init__(self, pin: int, *, active_low: bool = False):
         self.pin = pin
@@ -24,6 +28,7 @@ class GPIOInput:
 
     @property
     def is_active(self) -> bool:
+        """返回“是否触发”的逻辑状态，而不是原始电平。"""
         value = bool(self.gpio.read())
         return not value if self.active_low else value
 
@@ -32,7 +37,7 @@ class GPIOInput:
 
 
 class GPIOOutput:
-    """Output wrapper used for status LEDs."""
+    """输出引脚包装类，主要用于状态 LED。"""
 
     def __init__(self, pin: int):
         self.pin = pin
@@ -51,7 +56,11 @@ class GPIOOutput:
 
 
 class NullLed:
-    """No-op LED used when a pin is not configured."""
+    """空 LED。
+
+    当 LED 引脚没有配置或打开失败时使用，调用 on/off 不会产生任何硬件动作。
+    这样主程序不需要到处判断 LED 是否存在。
+    """
 
     def on(self) -> None:
         pass
@@ -64,10 +73,10 @@ class NullLed:
 
 
 class UltrasonicSensor:
-    """HC-SR04-style ultrasonic distance sensor.
+    """HC-SR04 风格超声波测距模块。
 
-    Timeouts are important: the old script waited forever if ECHO never changed.
-    A timeout returns None, letting the caller decide whether to stop or ignore.
+    旧脚本在等待 ECHO 电平变化时没有超时保护，如果传感器断线或未响应，会一直卡住。
+    这里加入超时：超时返回 None，由底盘控制策略决定停止或忽略。
     """
 
     def __init__(self, trig_pin: int, echo_pin: int, timeout_seconds: float = 0.03):
@@ -77,6 +86,7 @@ class UltrasonicSensor:
         self.trig.write(False)
 
     def read_distance_cm(self) -> Optional[float]:
+        """测量距离，单位厘米。超时或异常响应时返回 None。"""
         self.trig.write(True)
         time.sleep(0.00001)
         self.trig.write(False)
@@ -102,6 +112,8 @@ class UltrasonicSensor:
 
 @dataclass
 class InfraredPair:
+    """左右两个红外避障传感器。"""
+
     left: GPIOInput
     right: GPIOInput
 
@@ -126,7 +138,11 @@ class InfraredPair:
 
 
 class FollowButton:
-    """Optional physical button for enabling follow mode."""
+    """可选的跟随模式按键。
+
+    如果没有配置实体按键，则使用 `default_enabled`。因此调试时可以直接通过
+    `--follow` 启用跟随模式。
+    """
 
     def __init__(self, pin: Optional[int], *, active_low: bool, default_enabled: bool):
         self.default_enabled = default_enabled
@@ -144,7 +160,11 @@ class FollowButton:
 
 
 class LedIndicators:
-    """Green/red/blue status LEDs; each pin is optional."""
+    """绿/红/蓝状态 LED 组合。
+
+    绿灯表示空闲，红灯表示跟随/运动，蓝灯表示正在听或处理语音。每个引脚都可以
+    不配置。
+    """
 
     def __init__(self, green_pin: Optional[int], red_pin: Optional[int], blue_pin: Optional[int]):
         self.green = self._make_led(green_pin, "green")

@@ -1,1 +1,5 @@
-"""Application entry points."""
+"""应用入口和控制策略。
+
+`main.py` 负责启动线程、初始化硬件和处理退出；`follow_controller.py` 负责把视觉和
+传感器状态转换成底盘动作。
+"""
