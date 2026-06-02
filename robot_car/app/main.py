@@ -126,15 +126,23 @@ def run_voice_loop(
     """
 
     logger.info("Voice loop started")
+
+    def handle_listening_state(active: bool) -> None:
+        """同步录音状态和蓝色指示灯。
+
+        单独写成函数而不是 lambda，是为了让类型检查器知道这里没有返回值。
+        """
+
+        state.set_voice_flags(listening=active)
+        leds.set_listening(active)
+
     while not stop_event.is_set():
         snapshot = state.snapshot()
         if not snapshot["voice_active"] or snapshot["listening_for_voice"] or snapshot["speaking"]:
             time.sleep(0.1)
             continue
 
-        audio_path = recorder.record_once(
-            on_listening=lambda active: (state.set_voice_flags(listening=active), leds.set_listening(active))
-        )
+        audio_path = recorder.record_once(on_listening=handle_listening_state)
         if audio_path is None:
             time.sleep(0.2)
             continue
