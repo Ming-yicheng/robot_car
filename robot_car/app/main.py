@@ -242,7 +242,7 @@ def main() -> None:
             if not args.skip_calibration:
                 recorder.calibrate_noise()
             speech_emotion = maybe_create_speech_emotion(config.paths.speech_emotion_model_path)
-            voice_client = QwenVoiceClient(config.qwen, config.audio)
+            voice_client = QwenVoiceClient(config.qwen, config.audio, config.paths)
             voice_thread = threading.Thread(
                 target=run_voice_loop,
                 args=(stop_event, config, state, recorder, speech_emotion, voice_client, telemetry, leds),

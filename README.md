@@ -14,11 +14,11 @@
 - OpenCV 摄像头读取和 Haar 人脸追踪
 - 面部情绪识别接口：`emotion-ferplus-8.onnx`
 - 语音情绪识别接口：`SER.tflite`
-- Qwen / DashScope 语音对话接口
+- 本地 SenseVoice 语音转写、本地 RKLLM/Qwen 对话和本地 MeloTTS 语音播放
 - Socket.IO 视频帧和情绪数据上传接口
 - 主程序入口：`python -m robot_car.app.main`
 
-运行完整功能前需要配置 API Key，并补齐部分可选依赖。
+运行完整语音功能前需要先启动本机 RKLLM Server，并确认本地 ASR/TTS 模型存在。
 
 ## 目录结构
 
@@ -26,11 +26,11 @@
 robot_car/
   robot_car/
     app/                 # 主程序和跟随控制策略
-    audio/               # 录音、语音情绪识别、Qwen 语音对话
+    audio/               # 录音、语音情绪识别、本地 Qwen/RKLLM 语音对话
     hardware/            # 电机、舵机、超声波、红外、LED/按键
     vision/              # 摄像头、人脸追踪、面部情绪识别
     web/                 # Socket.IO 数据和视频帧上传
-    config.py            # 统一配置：引脚、模型路径、阈值、API、Web 地址
+    config.py            # 统一配置：引脚、模型路径、阈值、本地 LLM/Web 地址
     state.py             # 线程间共享状态
   assets/image/          # Haar XML，本机保留，不上传 Git
   data/                  # 运行时录音输出
@@ -64,7 +64,7 @@ pyserial
 完整语音和 Web 功能还需要：
 
 ```bash
-pip install openai python-socketio dashscope tflite-runtime
+pip install sherpa_onnx requests python-socketio tflite-runtime
 ```
 
 注意：当前板子上 `tensorflow` 导入会触发崩溃，所以语音情绪识别只使用 `tflite-runtime`。
@@ -79,12 +79,6 @@ cp .env.example .env
 nano .env
 ```
 
-至少填写：
-
-```text
-DASHSCOPE_API_KEY=你的 DashScope API Key
-```
-
 常用环境变量：
 
 ```text
@@ -94,6 +88,9 @@ ROBOT_CAMERA_DEVICE=0
 ROBOT_SERVO_I2C_BUS=2
 ROBOT_SERVO_I2C_ADDRESS=0x40
 ROBOT_FOLLOW_ENABLED_ON_START=false
+ROBOT_RKLLM_SERVER_URL=http://127.0.0.1:8080/rkllm_chat
+ROBOT_LOCAL_ASR_ENABLED=true
+ROBOT_LOCAL_TTS_ENABLED=true
 ```
 
 如果 `i2cdetect` 看到 PCA9685 地址是 `0x60`，运行前可以覆盖：
@@ -112,6 +109,12 @@ export ROBOT_SERVO_I2C_ADDRESS=0x60
 ```text
 models/emotion-ferplus-8.onnx
 models/SER.tflite
+models/speech/sensevoice-small/model.int8.onnx
+models/speech/sensevoice-small/tokens.txt
+models/speech/vits-melo-tts-zh_en/model_int8.onnx
+models/speech/vits-melo-tts-zh_en/lexicon.txt
+models/speech/vits-melo-tts-zh_en/tokens.txt
+models/llm/qwen3-vl-2b-instruct_w8a8_rk3588.rkllm
 assets/image/haarcascade_frontalface_default.xml
 assets/image/haarcascade_eye.xml
 ```
@@ -143,6 +146,21 @@ models/
 ```
 
 ## 运行
+
+完整本地语音对话需要先启动 RKLLM Server：
+
+```bash
+cd /home/orangepi/rknn-llm/examples/rkllm_server_demo/rkllm_server
+python3 flask_server.py \
+  --rkllm_model_path /home/orangepi/robot_car/models/llm/qwen3-vl-2b-instruct_w8a8_rk3588.rkllm \
+  --target_platform rk3588
+```
+
+启动后接口地址默认为：
+
+```text
+http://127.0.0.1:8080/rkllm_chat
+```
 
 基础启动：
 

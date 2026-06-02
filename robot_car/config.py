@@ -94,6 +94,38 @@ class ProjectPaths:
         return self.models_dir / "SER.tflite"
 
     @property
+    def sense_voice_dir(self) -> Path:
+        return self.models_dir / "speech" / "sensevoice-small"
+
+    @property
+    def sense_voice_model_path(self) -> Path:
+        return self.sense_voice_dir / "model.int8.onnx"
+
+    @property
+    def sense_voice_tokens_path(self) -> Path:
+        return self.sense_voice_dir / "tokens.txt"
+
+    @property
+    def local_tts_dir(self) -> Path:
+        return self.models_dir / "speech" / "vits-melo-tts-zh_en"
+
+    @property
+    def local_tts_model_path(self) -> Path:
+        return self.local_tts_dir / "model_int8.onnx"
+
+    @property
+    def local_tts_lexicon_path(self) -> Path:
+        return self.local_tts_dir / "lexicon.txt"
+
+    @property
+    def local_tts_tokens_path(self) -> Path:
+        return self.local_tts_dir / "tokens.txt"
+
+    @property
+    def rkllm_model_path(self) -> Path:
+        return self.models_dir / "llm" / "qwen3-vl-2b-instruct_w8a8_rk3588.rkllm"
+
+    @property
     def output_wav_path(self) -> Path:
         return self.data_dir / "output.wav"
 
@@ -239,20 +271,26 @@ class AudioConfig:
 
 @dataclass
 class QwenConfig:
-    """Qwen / DashScope 云端语音对话配置。
+    """本地 Qwen / RKLLM 语音对话配置。
 
-    API Key 不写入代码，运行时从 `.env`、`qwen.env` 或系统环境变量读取。
+    语音链路默认完全本地运行：
+    SenseVoice ONNX 做语音转写，RKLLM Server 调用板载 `.rkllm` 大模型，
+    sherpa-onnx VITS/MeloTTS 模型做语音播放。
     """
 
-    env_file: Path = PROJECT_ROOT / ".env"
-    fallback_env_file: Path = PROJECT_ROOT / "qwen.env"
-    api_key_env_names: tuple[str, ...] = ("DASHSCOPE_API_KEY", "OPENAI_API_KEY", "key")
-    base_url: str = field(
-        default_factory=lambda: os.getenv("ROBOT_QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    rkllm_server_url: str = field(
+        default_factory=lambda: os.getenv("ROBOT_RKLLM_SERVER_URL", "http://127.0.0.1:8080/rkllm_chat")
     )
-    model: str = field(default_factory=lambda: os.getenv("ROBOT_QWEN_MODEL", "qwen2.5-omni-7b"))
-    transcription_model: str = "qwen-audio-turbo-latest"
-    voice: str = field(default_factory=lambda: os.getenv("ROBOT_QWEN_VOICE", "Chelsie"))
+    model: str = field(default_factory=lambda: os.getenv("ROBOT_QWEN_MODEL", "qwen3-vl-2b-instruct-rkllm"))
+    request_timeout_seconds: float = field(default_factory=lambda: _float_env("ROBOT_RKLLM_TIMEOUT_SECONDS", 120.0))
+    asr_enabled: bool = field(default_factory=lambda: _bool_env("ROBOT_LOCAL_ASR_ENABLED", True))
+    asr_language: str = field(default_factory=lambda: os.getenv("ROBOT_LOCAL_ASR_LANGUAGE", "auto"))
+    asr_use_itn: bool = field(default_factory=lambda: _bool_env("ROBOT_LOCAL_ASR_USE_ITN", True))
+    tts_enabled: bool = field(default_factory=lambda: _bool_env("ROBOT_LOCAL_TTS_ENABLED", True))
+    tts_speaker_id: int = field(default_factory=lambda: _int_env("ROBOT_LOCAL_TTS_SPEAKER_ID", 0))
+    tts_speed: float = field(default_factory=lambda: _float_env("ROBOT_LOCAL_TTS_SPEED", 1.0))
+    local_provider: str = field(default_factory=lambda: os.getenv("ROBOT_LOCAL_ONNX_PROVIDER", "cpu"))
+    local_num_threads: int = field(default_factory=lambda: _int_env("ROBOT_LOCAL_ONNX_THREADS", 2))
     system_prompt: str = "你是一个情感智能语音助手，擅长根据用户的情绪用中文进行自然、温和的沟通。"
 
 

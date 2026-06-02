@@ -6,15 +6,15 @@ periphery
 smbus2
 pyserial
 
-# Audio and cloud dialogue.
+# Audio and local dialogue.
 pyaudio
 soundfile
 librosa
-openai
 python-dotenv
 python-socketio
 requests
 pydub
+sherpa_onnx
 
 # Optional speech-emotion runtime. SER uses tflite-runtime only; the current
 # Orange Pi environment crashes when importing tensorflow.
