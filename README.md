@@ -105,6 +105,7 @@ export ROBOT_SERVO_I2C_ADDRESS=0x60
 ## 模型和资源
 
 模型文件放在本机，不上传 GitHub。
+`models/`、`assets/image/`、`data/` 和 `logs/` 这类运行目录会用 `.gitkeep` 保留目录结构；目录里的模型、XML、录音和日志文件仍然被 `.gitignore` 排除。
 
 当前主程序直接使用：
 
